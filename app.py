@@ -1,3 +1,6 @@
+ from pipin import install_requirements
+   
+
 import os
 import json
 import time
@@ -235,5 +238,6 @@ class TwinkleTonesCLI:
                 print("Invalid option. Please select again.")
 
 if __name__ == "__main__":
+     install_requirements()
     app = TwinkleTonesCLI()
     app.run()
