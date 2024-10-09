@@ -95,90 +95,20 @@ class TwinkleTonesCLI:
         for idx, picture in enumerate(self.pictures):
             print(f"{idx + 1}: {picture}")
 
-    def prompt_for_new_content(self):
-        """
-        Prompt the user to add new content if any categories are empty.
-        """
-        if not self.quotes:
-            print("No quotes found. Please add a new quote.")
-            self.add_new_content()
-
-        if not self.texts:
-            print("No texts found. Please add a new text.")
-            self.add_new_content()
-
-        if not self.symbols:
-            print("No symbols found. Please add a new symbol.")
-            self.add_new_content()
-
-        if not self.deals['deals']:
-            print("No deals found. Please add a new deal.")
-            self.add_new_content()
-
-        if not self.pictures:
-            print("No pictures found. Please add a new picture.")
-            self.add_new_content()
-
     def select_content(self):
-        self.prompt_for_new_content()  # Ensure all categories are populated
-        print("\nSelect a quote (number):")
-        for i, quote in enumerate(self.quotes, 1):
-            print(f"{i}. {quote}")
-        quote_index = int(input("Enter your selection: ")) - 1  # Convert to 0-based index
-        
-        if quote_index < 0 or quote_index >= len(self.quotes):
-            print("Invalid selection. Please select a valid quote number.")
-            return "", None, None  # Return early if selection is invalid
+        quote_index = int(input("Select a quote (number): ")) - 1
+        text_index = int(input("Select a text (number): ")) - 1
+        symbol_index = int(input("Select a symbol (number): ")) - 1
+        deal_index = int(input("Select a deal (number) (or skip by entering 0): ")) - 1 if input("Use a deal? (y/n): ").lower() == 'y' else None
+        picture_index = int(input("Select a picture (number): ")) - 1
 
-        print("\nSelect a text (number):")
-        for i, text in enumerate(self.texts, 1):
-            print(f"{i}. {text}")
-        text_index = int(input("Enter your selection: ")) - 1
-        
-        if text_index < 0 or text_index >= len(self.texts):
-            print("Invalid selection. Please select a valid text number.")
-            return "", None, None
-
-        print("\nSelect a symbol (number):")
-        for i, symbol in enumerate(self.symbols, 1):
-            print(f"{i}. {symbol}")
-        symbol_index = int(input("Enter your selection: ")) - 1
-        
-        if symbol_index < 0 or symbol_index >= len(self.symbols):
-            print("Invalid selection. Please select a valid symbol number.")
-            return "", None, None
-
-        deal = None
-        use_deal = input("Use a deal? (y/n): ").strip().lower()
-        if use_deal == 'y':
-            print("\nSelect a deal (number):")
-            for i, deal_item in enumerate(self.deals, 1):
-                print(f"{i}. {deal_item['name']} - {deal_item['price']} ({deal_item['discount']})")
-            deal_index = int(input("Enter your selection (or skip by entering 0): ")) - 1
-
-            if deal_index < 0 or deal_index >= len(self.deals):
-                print("Invalid selection. No deal will be used.")
-            else:
-                deal = self.deals[deal_index]
-
-        picture = None
-        print("\nSelect a picture (number):")
-        for i, picture_file in enumerate(self.pictures, 1):
-            print(f"{i}. {picture_file}")
-        picture_index = int(input("Enter your selection: ")) - 1
-
-        if picture_index < 0 or picture_index >= len(self.pictures):
-            print("Invalid selection. No picture will be used.")
-        else:
-            picture = self.pictures[picture_index]
-
-        # Return selected content and deal
         selected_quote = self.quotes[quote_index]
         selected_text = self.texts[text_index]
         selected_symbol = self.symbols[symbol_index]
+        selected_picture = self.pictures[picture_index]
+        selected_deal = self.deals['deals'][deal_index] if deal_index is not None else None
 
-        return selected_quote, deal, picture
-
+        return f"{selected_quote} {selected_text} {selected_symbol}", selected_deal, selected_picture
 
     def add_new_content(self):
         print("\nSelect the type of content to add:")
@@ -249,79 +179,91 @@ class TwinkleTonesCLI:
         driver.get("https://www.facebook.com/")
         time.sleep(2)  # Wait for page to load
 
+        driver.find_element(By.ID, "email").send_keys(email)
+        driver.find_element(By.ID, "pass").send_keys(password)
+        driver.find_element(By.NAME, "login").click()
+        time.sleep(5)  # Wait for login to complete
+
+        return driver
+
+    def generate_post_content(self, content, deal):
+        if deal:
+            product_info = f"\n📢 Deal Alert! 📢\n\nGet our {deal['product']} now for just {deal['price']}! 🔥 That's {deal['discount']} off the original price.\n\n👉 Buy Now: {deal['link']}\n"
+            return content + product_info + f"\n#Discount #BuyNow #{deal['product'].replace(' ', '')}"
+        return content
+
+    def post_to_facebook(self, driver, content, scheduled_time, picture):
+        driver.get("https://www.facebook.com/")  # Navigate to Facebook homepage
+        time.sleep(2)
+
+        # Locate the post input field
+        driver.find_element(By.CSS_SELECTOR, "[name='xhpc_message']").send_keys(content)
+
+        # Handle image upload
+        image_input = driver.find_element(By.CSS_SELECTOR, "[data-testid='media-attachment-add-photo']")
+        image_input.send_keys(os.path.join(self.base_dir, 'pictures', picture))
+
+        # Simulate posting
+        driver.find_element(By.CSS_SELECTOR, "[data-testid='react-composer-post-button']").click()
+
+        print(f"Post scheduled for: {scheduled_time}.")
+
+    def save_post(self, content, deal, picture, scheduled_time):
+        saved_posts_file = os.path.join(self.base_dir, "saved_posts.json")
+        post_data = {
+            "content": content,
+            "deal": deal,
+            "picture": picture,
+            "scheduled_time": scheduled_time,
+            "created_at": time.strftime("%Y-%m-%d %H:%M:%S")
+        }
         try:
-            driver.find_element(By.ID, "email").send_keys(email)
-            driver.find_element(By.ID, "pass").send_keys(password)
-            driver.find_element(By.NAME, "login").click()
-            time.sleep(5)  # Wait for login to complete
-            if "Facebook" not in driver.title:
-                print("Login failed. Please check your credentials.")
-                driver.quit()
-                return None
-            return driver
-        except Exception as e:
-            print(f"Error during login: {e}")
-            driver.quit()
-            return None
+            with open(saved_posts_file, 'r+') as file:
+                saved_posts = json.load(file)
+                saved_posts.append(post_data)
+                file.seek(0)
+                json.dump(saved_posts, file, indent=4)
+            print("Post saved successfully!")
+        except (FileNotFoundError, json.JSONDecodeError):
+            with open(saved_posts_file, 'w') as file:
+                json.dump([post_data], file, indent=4)
+            print("Saved new post to file.")
 
-    def post_to_facebook(self, driver, content, picture):
-        # Locate the post box and input content
-        driver.find_element(By.XPATH, "//div[contains(@role,'textbox')]").send_keys(content)
-
-        # Attach a picture if provided
-        if picture:
-            image_input = driver.find_element(By.XPATH, "//input[@type='file']")
-            image_input.send_keys(os.path.abspath(os.path.join(self.base_dir, 'pictures', picture)))
-
-        # Post the content
-        driver.find_element(By.XPATH, "//button[contains(.,'Post')]").click()
-        time.sleep(5)  # Wait for the post to complete
-        print("Post submitted successfully!")
-
-    def schedule_post(self, content, deal, picture):
-        post_time = input("Enter the time to post (YYYY-MM-DD HH:MM): ")
-        self.scheduler.add_job(self.execute_scheduled_post, 'date', run_date=post_time, args=[content, deal, picture])
-        print(f"Post scheduled for {post_time}.")
-
-    def execute_scheduled_post(self, content, deal, picture):
-        print("Executing scheduled post...")
-        email = input("Enter your Facebook email: ")
-        password = input("Enter your Facebook password: ")
+    def schedule_post(self, email, password, content, deal, picture, scheduled_time):
         driver = self.login_facebook(email, password)
-
-        if driver:
-            content_with_deal = self.generate_post_content(content, deal)
-            self.post_to_facebook(driver, content_with_deal, picture)
-            driver.quit()
-        else:
-            print("Failed to login for scheduled post.")
-
-    def run(self):
-        self.display_instructions()
-        while True:
-            self.display_options()
-            content, deal, picture = self.select_content()
-            action = input("Do you want to [1] Post Immediately, [2] Schedule a Post, or [3] Add New Content? ")
-
-            if action == '1':
-                email = input("Enter your Facebook email: ")
-                password = input("Enter your Facebook password: ")
-                driver = self.login_facebook(email, password)
-
-                if driver:
-                    content_with_deal = self.generate_post_content(content, deal)
-                    self.post_to_facebook(driver, content_with_deal, picture)
-                    driver.quit()
-                else:
-                    print("Failed to login for immediate post.")
-            elif action == '2':
-                self.schedule_post(content, deal, picture)
-            elif action == '3':
-                self.add_new_content()
-            else:
-                print("Invalid selection!")
+        post_content = self.generate_post_content(content, deal)
+        self.scheduler.add_job(self.post_to_facebook, 'date', run_date=scheduled_time, args=[driver, post_content, scheduled_time, picture])
+        self.save_post(post_content, deal, picture, scheduled_time)
 
 if __name__ == "__main__":
-    install_requirements()  # Ensure required packages are installed
-    app = TwinkleTonesCLI()
-    app.run()
+    install_requirements()
+    cli = TwinkleTonesCLI()
+    cli.display_instructions()
+
+    while True:
+        cli.display_options()
+        selected_content, selected_deal, selected_picture = cli.select_content()
+
+        print("\nReview your post:")
+        print(f"Content: {selected_content}")
+        if selected_deal:
+            print(f"Deal: {selected_deal}")
+        print(f"Picture: {selected_picture}")
+
+        schedule = input("\nWould you like to schedule this post? (y/n): ")
+        if schedule.lower() == 'y':
+            scheduled_time = input("Enter the scheduled time (YYYY-MM-DD HH:MM): ")
+            email = input("Enter your Facebook email: ")
+            password = input("Enter your Facebook password: ")
+            cli.schedule_post(email, password, selected_content, selected_deal, selected_picture, scheduled_time)
+        else:
+            print("Post creation complete.")
+
+        add_more = input("\nWould you like to add new content to the database? (y/n): ")
+        if add_more.lower() == 'y':
+            cli.add_new_content()
+
+        continue_posting = input("\nWould you like to create another post? (y/n): ")
+        if continue_posting.lower() != 'y':
+            print("Exiting TwinkleTones CLI. Goodbye!")
+            break

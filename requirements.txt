@@ -1,3 +1,6 @@
 selenium==4.6.0
 webdriver-manager==3.8.5
 apscheduler==3.9.1
+requests
+schedule
+beautifulsoup4
